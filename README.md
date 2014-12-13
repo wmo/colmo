@@ -7,4 +7,4 @@ A bunch of simple scripts that work with [redis](http://redis.io/) to create an 
 
 - to be ignored [history](history.md). 
 
-- ![](pipeline.svg]
+- ![](pipeline.svg)
