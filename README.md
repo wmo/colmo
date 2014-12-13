@@ -9,7 +9,9 @@ A bunch of python scripts that work with [redis](http://redis.io/) to create a s
 
 Sidenote: a [history](history.md) too short to be clicked 
 
-## Demonstration 
+Read following quick demonstration, and then read the [setup](setup.md) to get started. 
+
+## Quick demonstration 
 
 These are the actions undertaken on the client.
 
@@ -22,7 +24,7 @@ eg.
     result:46312345 after 114951 iterations
 
 Of course the longer the pattern, the more iterations (and the longer) it takes to find a random number with the requested pattern. 
-And if you are wondering: what is the use of this program? Sorry, it's completely useless, it's just a simple way to waste time! 
+And if you are wondering what the use is of this program? Sorry, it's completely useless, it's just a simple way to literally waste time! 
 
 Here's the source of that program:
 
@@ -47,39 +49,49 @@ Here's the source of that program:
             go_on=False
         cnt=cnt+1
 
-Let's now run this program on our *Colmo cluster*! 
+Let's now run this program on our *Colmo cluster* ! 
 
-Push the job and it's three variations onto the job queue: 
+Push the program and the three requested variations 11111, 33333, 55555 onto the job queue: 
 
-    push_job.py main.py nodata 11111 33333 55555 
-    Adding  job266
-    Adding  job267
-    Adding  job268
+    $ push_job.py main.py nodata 11111 33333 55555 
 
-Show me what the progress is: 
+    Adding  job277
+    Adding  job278
+    Adding  job279
 
-    lsp.py 
+Immediately followed 'list-progress' to see what
+ 
+    $ lsp.py 
+
     === PROGRESS ============== 
     --- QUEUE: qjob ------- 
-    {id:job268,program:main.py, data:nodata, variation:55555 ..} 
-    {id:job267,program:main.py, data:nodata, variation:33333 ..}
-    {id:job266,program:main.py, data:nodata, variation:11111 ..}
+    {id:job279, program:main.py, data:nodata, variation:55555, .. }
+    {id:job278, program:main.py, data:nodata, variation:33333, .. }
+    {id:job277, program:main.py, data:nodata, variation:11111, .. }
     --- SET: sprogress ------- 
+
+A short while later, do it again: 
+
+    $ lsp.py 
+
+
 
 Note: above json was slightly edited to make it more pallatable! 
 
 A moment later, enquire again:
 
-    lsp.py 
+    $ lsp.py 
+
     === PROGRESS ============== 
     --- QUEUE: qjob ------- 
-    {id:job268,program:main.py, data:nodata, variation:55555, ..}
-    {id:job267,program:main.py, data:nodata, variation:33333, ..}
     --- SET: sprogress ------- 
-    {id:job266,program:main.py, data:nodata, variation:11111, ..}
+    {id:job277, program:main.py, data:nodata, variation:11111, .. }
 
+All jobs have left the queue, and two of them have already been processed, leaving only 1 job in the *progress* set. 
 
-And a little while later, the job queue and the progress set are empty. 
+And again a little while later, the job queue and the progress set are empty. 
+
+    $ lsp.py 
 
     === PROGRESS ============== 
     --- QUEUE: qjob ------- 
@@ -90,8 +102,9 @@ Now show the output of the jobs:
     $ showo.py 
 
     --- MAP: moutput ------- 
-    job266 : result:40000000 after 7593693 iterations | 
-    job267 : result:96633333 after 293774 iterations | 
-    job268 : result:70000000 after 6718647 iterations | 
-
-
+    job277 : result:2011111 after 352711 iterations | 
+    job278 : result:75133333 after 115120 iterations | 
+    job279 : result:57555555 after 460 iterations | 
+   
+And that concludes the quick tour! 
+ 
