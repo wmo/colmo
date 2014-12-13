@@ -19,7 +19,7 @@ The python program we are going to run ('main.py') goes into a loop, and keeps o
 
 Eg. you want to get a random number that ends with 12345 
 
-eg. 
+
     $ ./main.py 12345
     result:46312345 after 114951 iterations
 
