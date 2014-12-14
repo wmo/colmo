@@ -8,6 +8,7 @@ import os.path
 import re
 import redis
 import socket
+import sys
 import time
 import urllib
 import zipfile
@@ -19,24 +20,32 @@ r=redis.StrictRedis(host=conf["server"], port=conf["port"],db=0)
 popped_major_jobid_set=set()
 
 def main(): 
+    # change to working directory passed as arg 1 on the CLI. 
+    if len(sys.argv)>1:
+        working_dir=sys.argv[1]
+        print "Changing to working dir: " + working_dir
+        os.chdir(working_dir) 
+
+    morsel_name=re.sub('^.*/','', os.getcwd()) 
     sleeptime=1 # 1 second
     while True:
         now = datetime.datetime.now()
         json_txt=r.rpop('qjob')
         if (json_txt is None):
-            print "%02d:%02d:%02d nothing in queue, sleeping %ds" % (now.hour, now.minute,now.second,sleeptime)
+            print "%10s: %02d:%02d:%02d nothing in queue, sleeping %ds" % (
+                   morsel_name, now.hour, now.minute,now.second,sleeptime)
             time.sleep(sleeptime)
             sleeptime= min( sleeptime*2, 16) # maximum sleeptime = 16 seconds
         else:
             jobattrib=json.loads(json_txt) 
             jobid=jobattrib['id']   # eg. job147:3 -> major id=job147, minor=3
-            print "%02d:%02d:%02d %s" % (now.hour,now.minute,now.second,jobid)
+            print "%10s: %02d:%02d:%02d %s" % (morsel_name,now.hour,now.minute,now.second,jobid)
             # never do a job with the same major id twice!
             major_jobid=re.sub(':.*$','',jobid)
             if major_jobid in popped_major_jobid_set: 
                 # push this job back on the queue, I'm not doing it, it's not for me
                 json_txt=r.lpush('qjob',json_txt)
-                print "-------- %s pushed back on queue, sleeping %ds" % ( jobid, sleeptime) 
+                print "%10s: -------- %s pushed back on queue, sleeping %ds" % (morsel_name,jobid,sleeptime) 
                 time.sleep(sleeptime) # sleep before we try again
                 sleeptime= min( sleeptime*2, 16) # maximum sleeptime = 16 seconds
                 continue
@@ -47,10 +56,10 @@ def main():
                 cmd=jobattrib['command']
                 # check if we need to do a housekeeping job
                 if cmd=='cleanup': 
-                    cleanup(jobid)
+                    cleanup(morsel_name,jobid)
                     continue
                 elif cmd=='ping': 
-                    ping(jobid)
+                    ping(morsel_name,jobid)
                     continue
 
             # it's a regular job
@@ -58,14 +67,13 @@ def main():
             data=jobattrib['data']
             variation=jobattrib['variation']
 
-            #print "*** %02d:%02d:%02d new job %s" % (now.hour, now.minute,now.second,jobid)
             # 1. add it to the progress set
             tm=r.time()  # unix timestamp + microseconds
             progress_txt=append_values_to_json(json_txt, str.format(r' "exec_start":"{0}.{1}"',tm[0],tm[1]) )
             r.sadd('sprogress',progress_txt) # add it to the 'sprogress' set
 
             # 2. execute the job 
-            output=handle_job(program, data,variation) 
+            output=handle_job(morsel_name, program, data,variation) 
             r.srem('sprogress', progress_txt) # remove it from the 'progress' set
 
             # 3. add to the done set
@@ -78,8 +86,8 @@ def main():
             sleeptime=1
 
 
-def cleanup(jobid):
-    print "-------- cleanup "
+def cleanup(morsel_name,jobid):
+    print "%10s: -------- cleanup " % morsel_name
     workdir=os.getcwd()
     for root, dirs, files in os.walk(workdir):
         for f in files:
@@ -91,8 +99,9 @@ def cleanup(jobid):
 def putout(jobid,output): 
     r.hset("moutput",jobid,json.dumps( { 'output':output } ) )
 
-def ping(jobid):
-    print "-------- ping " 
+
+def ping(morsel_name,jobid):
+    print "%10s: -------- ping " % morsel_name
     workdir=os.getcwd()
     files_n_dirs = glob.glob(workdir+"/*")
     putout( jobid, 
@@ -101,19 +110,19 @@ def ping(jobid):
             )
 
 
-def handle_job(program_tag,data_tag,variation_tag):
-    print "-------- program   : %s" % program_tag
-    print "-------- data      : %s" % data_tag
-    print "-------- variation : %s" % variation_tag
+def handle_job(morsel_name,program_tag,data_tag,variation_tag):
+    print "%10s: -------- program   : %s" % program_tag
+    print "%10s: -------- data      : %s" % data_tag
+    print "%10s: -------- variation : %s" % variation_tag
     if r.hexists("mprogram",program_tag) and not(os.path.isfile(program_tag)):
         content=r.hget("mprogram",program_tag)
-        write_file(program_tag,content) 
+        write_file(morsel_name,program_tag,content) 
     if r.hexists("mdata",data_tag) and not(os.path.isfile(data_tag)):
         content=r.hget("mdata",data_tag)
-        write_file(data_tag,content) 
+        write_file(morsel_name,data_tag,content) 
     if r.hexists("mvariation",variation_tag) and not(os.path.isfile(variation_tag)):
         content=r.hget("mvariation",variation_tag)
-        write_file(variation_tag,content) 
+        write_file(morsel_name,variation_tag,content) 
     # now execute the program 
     output=''
     if program_tag.endswith(".py"):
@@ -128,14 +137,14 @@ def handle_job(program_tag,data_tag,variation_tag):
     return output  
 
 
-def write_file(filename,content):
+def write_file(morsel_name,filename,content):
     if (len(content)<1): return
-    print "Writing file %s" % filename
+    print "%10s: -------- writing file %s" % (morsel_name,filename)
     fw = open(filename,"wb")
     fw.write(content)
     fw.close()
     if filename.endswith(".zip"): 
-        print "Unzipping file %s" % filename
+        print "%10s: -------- unzipping file %s" % (morsel_name,filename)
         with zipfile.ZipFile(filename) as the_zip_file:
             the_zip_file.extractall() 
     if filename.endswith(".py"): 
