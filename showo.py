@@ -5,7 +5,7 @@ import redis
 import re
 import urllib
 
-json_txt = urllib.urlopen("http://signpost/rome.json").read()
+json_txt = urllib.urlopen("http://localhost/rome.json").read()
 conf=json.loads(json_txt) 
 r=redis.StrictRedis(host=conf["server"], port=conf["port"],db=0)
 
