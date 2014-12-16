@@ -16,6 +16,8 @@ else
         fi 
         # launch background process, that will use that scratch dir
         ./morsel.py $M  & 
+        # sleep 2 seconds, so that not all morsels kick-in at the same time
+        sleep 2
     done
 fi
 echo "remember:" 
