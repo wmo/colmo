@@ -111,9 +111,9 @@ def ping(morsel_name,jobid):
 
 
 def handle_job(morsel_name,program_tag,data_tag,variation_tag):
-    print "%10s: -------- program   : %s" % program_tag
-    print "%10s: -------- data      : %s" % data_tag
-    print "%10s: -------- variation : %s" % variation_tag
+    print "%10s: -------- program   : %s" % ( morsel_name, program_tag )
+    print "%10s: -------- data      : %s" % ( morsel_name, data_tag )
+    print "%10s: -------- variation : %s" % ( morsel_name, variation_tag )
     if r.hexists("mprogram",program_tag) and not(os.path.isfile(program_tag)):
         content=r.hget("mprogram",program_tag)
         write_file(morsel_name,program_tag,content) 
