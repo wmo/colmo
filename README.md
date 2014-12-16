@@ -7,9 +7,9 @@ A bunch of python scripts that work with [redis](http://redis.io/) to create a s
 
 ![](pipeline.png)
 
-Sidenote: a [history](history.md) too short to be clicked 
+Sidenote: a [history](doc/history.md) too short to be clicked 
 
-Read following quick demonstration, and then read the [setup](setup.md) to get started. 
+Read following quick demonstration, and then read the [doc/setup](doc/setup.md) to get started. 
 
 ## Quick demonstration 
 
