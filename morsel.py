@@ -132,7 +132,7 @@ def handle_job(morsel_name,program_tag,data_tag,variation_tag):
         pipe = os.popen('/usr/bin/octave -q ' + program_tag + ' ' + variation_tag)
         output=pipe.readlines()
     elif program_tag.endswith(".R"):
-        pipe = os.popen('/usr/bin/R <' + program_tag + ' ' + variation_tag)
+        pipe = os.popen('/usr/bin/R --slave --vanilla --quiet -f ' + program_tag + ' --args ' + variation_tag)
         output=pipe.readlines()
     return output  
 

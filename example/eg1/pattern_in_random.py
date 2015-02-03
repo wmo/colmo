@@ -15,6 +15,6 @@ go_on=True
 while go_on:
     s=str.format("{0}",random.randrange(0,100000000))
     if s.endswith(pattern): 
-        print "result:%s after %d iterations" % ( s, cnt ) 
+        print "| Python | pattern-length:%d | iterations:%d | found:%s |" % ( len(pattern), cnt,s ) 
         go_on=False
     cnt=cnt+1
