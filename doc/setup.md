@@ -7,8 +7,8 @@ Add a 'rome' sign to the localhost, because all roads lead to Rome.
 `sudo vi /var/www/rome.json` 
 
     { 
-      "server": "buya",
-      "port": "6379" 
+      "redisserver": "<NAME_OF_YOUR_REDIS_SERVER>",
+      "redisport": "6379" 
     }
 
 
@@ -19,8 +19,8 @@ Add a 'rome' sign to the localhost, because all roads lead to Rome.
 
     wget -qO - http://localhost/rome.json 
     { 
-      "server": "buya",
-      "port": "6379" 
+      "redisserver": "<NAME_OF_YOUR_REDIS_SERVER>",
+      "redisport": "6379" 
     }
 
 
@@ -47,8 +47,8 @@ or
 and put these lines:
 
     { 
-      "server": "buya",
-      "port": "6379" 
+      "redisserver": "<NAME_OF_YOUR_REDIS_SERVER>",
+      "redisport": "6379" 
     }
 
 SIGNPOST edit!!
