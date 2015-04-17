@@ -18,10 +18,10 @@ def main():
         sys.exit(2)
 
     program_name=sys.argv[1]
-    add_to_tagmap("mprogram", program_name)
+    add_to_tagmap("mprogram", program_name, True )  # Force put program onto redis 
 
     data_name=sys.argv[2]
-    add_to_tagmap("mdata", sys.argv[2])
+    add_to_tagmap("mdata", sys.argv[2], False) # Don't force-put program onto redis
 
     for i in range(3,len(sys.argv)):
         variation_name=sys.argv[i]
@@ -29,7 +29,7 @@ def main():
 
 
 def add_job(program_name,data_name, variation_name): 
-        add_to_tagmap("mvariation", variation_name)
+        #add_to_tagmap("mvariation", variation_name, true)
 
         # get a job_id
         sq=r.incr("seq_job")
@@ -40,9 +40,9 @@ def add_job(program_name,data_name, variation_name):
         print "Adding  job%s" % sq
 
 
-def add_to_tagmap(map_name,field):
-    # first check if the tag already exists 
-    if r.hexists(map_name,field):
+def add_to_tagmap(map_name,field,force):
+    # first check if the tag already exists, unless we are forced to put it onto redis
+    if (not force) and (r.hexists(map_name,field)):
         print "  map '%s' already contains '%s' " % ( map_name, field ) 
         return
 

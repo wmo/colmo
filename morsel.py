@@ -114,7 +114,8 @@ def handle_job(morsel_name,program_tag,data_tag,variation_tag):
     print "%10s: -------- program   : %s" % ( morsel_name, program_tag )
     print "%10s: -------- data      : %s" % ( morsel_name, data_tag )
     print "%10s: -------- variation : %s" % ( morsel_name, variation_tag )
-    if r.hexists("mprogram",program_tag) and not(os.path.isfile(program_tag)):
+    #orig if r.hexists("mprogram",program_tag) and not(os.path.isfile(program_tag)):
+    if r.hexists("mprogram",program_tag): # always copy the latest program file from redis
         content=r.hget("mprogram",program_tag)
         write_file(morsel_name,program_tag,content) 
     if r.hexists("mdata",data_tag) and not(os.path.isfile(data_tag)):
@@ -132,7 +133,8 @@ def handle_job(morsel_name,program_tag,data_tag,variation_tag):
         pipe = os.popen('/usr/bin/octave -q ' + program_tag + ' ' + variation_tag)
         output=pipe.readlines()
     elif program_tag.endswith(".R"):
-        pipe = os.popen('/usr/bin/R --slave --vanilla --quiet -f ' + program_tag + ' --args ' + variation_tag)
+        pipe = os.popen('/usr/bin/Rscript ' + program_tag + ' ' + variation_tag)
+        #pipe = os.popen('/usr/bin/R --slave --vanilla --quiet -f ' + program_tag + ' --args ' + variation_tag)
         output=pipe.readlines()
     return output  
 
