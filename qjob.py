@@ -46,9 +46,17 @@ def main():
     for var in sys.argv[prog_index+1:]:
         variation_ls.extend(expand_variation(var)) # extend = append vector to vector
 
+    jobs_added_ls=[]
     for var in variation_ls:
         print "variation ------ %s" % var
-        add_job(program_name,",".join(datafile_ls), var) 
+        jobs_added_ls.append( add_job(program_name,",".join(datafile_ls), var) )
+
+    l=len(jobs_added_ls)
+    if l<25:
+        print "Added jobs: {}".format(jobs_added_ls)
+    else:
+        print "Added jobs: {} {} .. {} {} ".format(jobs_added_ls[0],jobs_added_ls[1],
+            jobs_added_ls[l-2] ,jobs_added_ls[l-1])
 
 
 def add_job(program_name,data_names, variation_name): 
@@ -60,7 +68,7 @@ def add_job(program_name,data_names, variation_name):
         r.lpush( "qjob", '{' + str.format( 
             r'"id":"job{0}","program":"{1}", "data":"{2}", "variation":"{3}", "queue_time":"{4}.{5}"', 
                  sq, program_name,data_names, variation_name, tm[0],tm[1] ) +'}' )
-        print "Adding  job%s" % sq
+        return "job{}".format(sq)
 
 
 def add_to_tagmap(map_name,field,force):
@@ -118,6 +126,8 @@ def expand_range_or_list(s):
             start+=step
     elif "," in s:
         rv_ls.extend( s.split(",") ) 
+    else:
+        rv_ls.append( s )
     return rv_ls
 
 
