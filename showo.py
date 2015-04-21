@@ -27,7 +27,10 @@ def main():
             o=re.sub( '\n',' | ', ' | '.join(v) ) 
         else:
             o=v
-        print "%7.2fs %s: %s" % ( jobtime[k],k,o )
+        t=0
+        if k in jobtime:
+            t=jobtime[k]
+        print "%7.2fs %s: %s" % ( t,k,o )
 
 if __name__ == "__main__": main()
 

@@ -109,7 +109,8 @@ def ping(morsel_name,jobid):
                 socket.gethostname(),re.sub('^.*/','', workdir),  len(files_n_dirs) ) 
             )
 
-
+# NOTE: this function uses popen, a deprecated function!!
+# see https://docs.python.org/2/library/subprocess.html#subprocess-replacements
 def handle_job(morsel_name,program_tag,data_tag,variation_tag):
     print "%10s: -------- program   : %s" % ( morsel_name, program_tag )
     print "%10s: -------- data      : %s" % ( morsel_name, data_tag )
@@ -133,7 +134,7 @@ def handle_job(morsel_name,program_tag,data_tag,variation_tag):
         pipe = os.popen('/usr/bin/octave -q ' + program_tag + ' ' + variation_tag)
         output=pipe.readlines()
     elif program_tag.endswith(".R"):
-        pipe = os.popen('/usr/bin/Rscript ' + program_tag + ' ' + variation_tag)
+        (child_stdin, pipe) = os.popen4('/usr/bin/Rscript ' + program_tag + ' ' + variation_tag)
         #pipe = os.popen('/usr/bin/R --slave --vanilla --quiet -f ' + program_tag + ' --args ' + variation_tag)
         output=pipe.readlines()
     return output  
