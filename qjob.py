@@ -14,7 +14,7 @@ r=redis.StrictRedis(host=conf["redisserver"], port=conf["redisport"],db=0)
 def main(): 
     # cmd line args
     if len(sys.argv)<4:
-        print "Usage: %s [datafile1] [datafile2] .. prog var1 [var2] [var3] .." % sys.argv[0]
+        print "Usage: %s [inputfile1] [inputfile2] [..] [-o outputfile1 [outputfile2] [..]] prog var1 [var2] [var3] .." % sys.argv[0]
         sys.exit(2)
 
     # pattern: multiple datafiles + program file + multiple variations
@@ -37,9 +37,20 @@ def main():
 
     # step 2: the data argument slice is that from 1..prog_index
     datafile_ls=sys.argv[1:prog_index]
+    infile_ls=[]
+    outfile_ls=[]
+    is_input=True # if false, it is an output
     for dfn in datafile_ls: 
-        print "datafile ------- %s " % (dfn)
-        add_to_tagmap("mdata", dfn, False) # Don't force-put program onto redis
+        if dfn=="-o": 
+            is_input=False 
+            continue 
+        if is_input:
+            print "inputfile ------ %s " % (dfn)
+            add_to_tagmap("mdata", dfn, False) # Don't force-put data onto redis
+            infile_ls.append(dfn)
+        else:
+            print "outputfile ----- %s " % (dfn)
+            outfile_ls.append(dfn)
 
     # step 3: the variations
     variation_ls=[] 
@@ -49,7 +60,7 @@ def main():
     jobs_added_ls=[]
     for var in variation_ls:
         print "variation ------ %s" % var
-        jobs_added_ls.append( add_job(program_name,",".join(datafile_ls), var) )
+        jobs_added_ls.append( add_job(program_name,infile_ls,outfile_ls, var) )
 
     l=len(jobs_added_ls)
     if l<25:
@@ -58,17 +69,45 @@ def main():
         print "Added jobs: {} {} .. {} {} ".format(jobs_added_ls[0],jobs_added_ls[1],
             jobs_added_ls[l-2] ,jobs_added_ls[l-1])
 
+    # step 4: poll for the output, in case we have output files
+    if len(outfile_ls)>0: 
+        print "Waiting for output files: {} ".format(",".join(outfile_ls))
+        job_waited_on_set=set(jobs_added_ls)
+        report_set_len=True
+        while (len(job_waited_on_set)>0):
+            if report_set_len:
+                sys.stdout.write( "\n["+str(len(job_waited_on_set))+"]" )
+                report_set_len=False
+            #for job in job_waited_on_set:
+            for job_json in r.smembers("sdone"): 
+                jobattrib=json.loads(job_json)
+                jobid=jobattrib['id'] 
+                if jobid in job_waited_on_set:
+                    # job is done, get the output file(s)
+                    for ofn in outfile_ls:
+                        fn="{}-{}".format( jobid, ofn) 
+                        content=r.hget("mdata",fn)
+                        write_file(fn,content)
+                    # remove from set
+                    job_waited_on_set.remove(jobid)
+                    report_set_len=True
+            sys.stdout.write(".") ; sys.stdout.flush()
+            time.sleep(1) # sleep a second
+    print "\nDone"
 
-def add_job(program_name,data_names, variation_name): 
-        #add_to_tagmap("mvariation", variation_name, true)
 
+
+def add_job(program_name, infile_ls, outfile_ls, variation_name): 
         # get a job_id
         sq=r.incr("seq_job")
         tm=r.time()  # unix timestamp + microseconds
+        jobid="j{}".format(sq)
+        # push on the qjob queue
         r.lpush( "qjob", '{' + str.format( 
-            r'"id":"job{0}","program":"{1}", "data":"{2}", "variation":"{3}", "queue_time":"{4}.{5}"', 
-                 sq, program_name,data_names, variation_name, tm[0],tm[1] ) +'}' )
-        return "job{}".format(sq)
+            r'"id":"{0}","program":"{1}", "infile_ls":{2}, "outfile_ls":{3}, "variation":"{4}", "queue_time":"{5}.{6}"', 
+
+            jobid, program_name, json.dumps(infile_ls), json.dumps(outfile_ls), variation_name, tm[0],tm[1] ) +'}' )
+        return jobid
 
 
 def add_to_tagmap(map_name,field,force):
@@ -88,16 +127,18 @@ def add_to_tagmap(map_name,field,force):
 def expand_variation(variation): 
     rv_ls=[]
     #print "VAR=%s" % variation
-    if "x" in variation: 
-        if variation.count("x")==1: 
-            (r,c)=variation.split("x") 
+    if "~" in variation: 
+        if variation.count("~")==1: 
+            (r,c)=variation.split("~") 
             row_ls=expand_range_or_list(r) 
             col_ls=expand_range_or_list(c) 
+            print "ROW {}".format(row_ls)
+            print "COL {}".format(col_ls)
             for re in row_ls:
                 for ce in col_ls:
                     rv_ls.append( "{} {}".format(re,ce) ) 
-        elif variation.count("x")==2: 
-            (r,c,d)=variation.split("x") 
+        elif variation.count("~")==2: 
+            (r,c,d)=variation.split("~") 
             row_ls=expand_range_or_list(r) 
             col_ls=expand_range_or_list(c) 
             dep_ls=expand_range_or_list(d) 
@@ -117,11 +158,11 @@ def expand_variation(variation):
 # s may contain : or , (but not x)
 def expand_range_or_list(s): 
     rv_ls=[]
-    if "x" in s: 
-        sys.exit("No 'x' allowed in range or list")
+    if "~" in s: 
+        sys.exit("No '~' allowed in range or list")
     if ":" in s:
         (start,stop,step)=range_details(s)
-        while start<stop:
+        while start<=stop:
             rv_ls.append(start)
             start+=step
     elif "," in s:
@@ -147,6 +188,18 @@ def range_details(s):
     return int(start), int(stop), int(step)
 
 
+
+def write_file(filename,content):
+    if content==None: 
+        print "Warning: content==None %s" % filename
+        return
+    if content and (len(content)<1): 
+        print "Warning: no content for %s" % filename
+        return
+    sys.stdout.write(" ") ; sys.stdout.write(filename) ; sys.stdout.write(" ") 
+    fw = open(filename,"wb")
+    fw.write(content)
+    fw.close()
 
 
 if __name__ == "__main__": main()

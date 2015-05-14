@@ -64,8 +64,12 @@ def main():
 
             # it's a regular job
             program=jobattrib['program']
-            data=jobattrib['data']
+            infile_ls=jobattrib['infile_ls']
+            outfile_ls=jobattrib['outfile_ls']
             variation=jobattrib['variation']
+
+            #print "got {} infiles".format(len(infile_ls))
+            #print "got {} outfiles".format(len(outfile_ls))
 
             # 1. add it to the progress set
             tm=r.time()  # unix timestamp + microseconds
@@ -73,17 +77,27 @@ def main():
             r.sadd('sprogress',progress_txt) # add it to the 'sprogress' set
 
             # 2. execute the job 
-            output=handle_job(morsel_name, program, data,variation) 
+            output=handle_job(morsel_name, program, infile_ls, variation) 
             r.srem('sprogress', progress_txt) # remove it from the 'progress' set
 
-            # 3. add to the done set
+            # 3. put output in the moutput map
+            putout(jobid,output) 
+            sleeptime=1
+
+            # 4. read the output files and put in the mdata map 
+            for fn in outfile_ls:
+                if os.path.isfile(fn):
+                    with open(fn, 'r') as content_file:
+                        content = content_file.read()
+                        # prepend the job-id the filename
+                        dataname="{}-{}".format(jobattrib['id'],fn)
+                        r.hset("mdata",dataname,content)
+                        print "Added {} to mdata in redis".format(dataname)
+
+            # 5. add to the done set
             tm=r.time()  # unix timestamp + microseconds
             done_txt=append_values_to_json(progress_txt, str.format(r' "exec_end":"{0}.{1}"',tm[0],tm[1]) )
             r.sadd('sdone',done_txt) 
-
-            # 4. put output in the moutput map
-            putout(jobid,output) 
-            sleeptime=1
 
 
 def cleanup(morsel_name,jobid):
@@ -111,17 +125,20 @@ def ping(morsel_name,jobid):
 
 # NOTE: this function uses popen, a deprecated function!!
 # see https://docs.python.org/2/library/subprocess.html#subprocess-replacements
-def handle_job(morsel_name,program_tag,data_tag,variation_tag):
-    print "%10s: -------- program   : %s" % ( morsel_name, program_tag )
-    print "%10s: -------- data      : %s" % ( morsel_name, data_tag )
-    print "%10s: -------- variation : %s" % ( morsel_name, variation_tag )
+def handle_job(morsel_name,program_tag,infile_ls,variation_tag):
+    print "%10s: -------- program    : %s" % ( morsel_name, program_tag )
+    print "%10s: -------- inputfiles : %s" % ( morsel_name, ",".join(infile_ls) )
+    print "%10s: -------- outputfiles: %s" % ( morsel_name, ",".join(outfile_ls) )
+    print "%10s: -------- variation  : %s" % ( morsel_name, variation_tag )
     #orig if r.hexists("mprogram",program_tag) and not(os.path.isfile(program_tag)):
     if r.hexists("mprogram",program_tag): # always copy the latest program file from redis
         content=r.hget("mprogram",program_tag)
         write_file(morsel_name,program_tag,content) 
-    if r.hexists("mdata",data_tag) and not(os.path.isfile(data_tag)):
-        content=r.hget("mdata",data_tag)
-        write_file(morsel_name,data_tag,content) 
+    # copy the infiles
+    for data_tag in infile_ls:
+        if r.hexists("mdata",data_tag) and not(os.path.isfile(data_tag)):
+            content=r.hget("mdata",data_tag)
+            write_file(morsel_name,data_tag,content) 
     if r.hexists("mvariation",variation_tag) and not(os.path.isfile(variation_tag)):
         content=r.hget("mvariation",variation_tag)
         write_file(morsel_name,variation_tag,content) 

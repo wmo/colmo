@@ -13,10 +13,14 @@ def main():
     print "--- QUEUE: qjob ------- "
     n=r.llen("qjob") 
     for i in range(0,n): 
-        print r.lindex("qjob",i)
+        v=r.lindex("qjob",i)
+        jobattrib=json.loads(v)
+        print "%-10s %s %s" % ( jobattrib['id'], jobattrib['program'], jobattrib['variation'] )
 
     print "--- SET: sprogress ------- "
-    for v in r.smembers("sprogress"): print v
+    for v in r.smembers("sprogress"): 
+        jobattrib=json.loads(v)
+        print "%-10s %s %s" % ( jobattrib['id'], jobattrib['program'], jobattrib['variation'] )
 
 
 if __name__ == "__main__": main()
