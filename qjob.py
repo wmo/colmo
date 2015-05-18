@@ -132,8 +132,8 @@ def expand_variation(variation):
             (r,c)=variation.split("~") 
             row_ls=expand_range_or_list(r) 
             col_ls=expand_range_or_list(c) 
-            print "ROW {}".format(row_ls)
-            print "COL {}".format(col_ls)
+            #print "ROW {}".format(row_ls)
+            #print "COL {}".format(col_ls)
             for re in row_ls:
                 for ce in col_ls:
                     rv_ls.append( "{} {}".format(re,ce) ) 
