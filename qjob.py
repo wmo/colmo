@@ -1,12 +1,13 @@
 #!/usr/bin/python
 
-import redis
+import argparse
 import json
-import time
-import sys 
-import urllib
 import os.path
 import re
+import redis
+import sys 
+import time
+import urllib
 
 json_txt = urllib.urlopen("http://localhost/rome.json").read()
 conf=json.loads(json_txt) 
@@ -14,66 +15,99 @@ r=redis.StrictRedis(host=conf["redisserver"], port=conf["redisport"],db=0)
 
 def main(): 
     # cmd line args
-    if len(sys.argv)<4:
-        print "Usage: %s [inputfile1] [inputfile2] [..] [-o outputfile1 [outputfile2] [..]] prog var1 [var2] [var3] .." % sys.argv[0]
-        sys.exit(2)
+    parser = argparse.ArgumentParser(description='Put jobs on the Colmo queue.')
+
+    parser.add_argument('-dry', action='count', help='dry run, just show what would be done, don''t execute')
+    parser.add_argument('-ioe', nargs='+', action='store', help='input files, one for each script') 
+    parser.add_argument('-iae', nargs='+', action='store', help='input files, all for each script') 
+    parser.add_argument('-e', nargs='+', action='store', help='executable script')
+    parser.add_argument('-e2', nargs='+', action='store', help='2nd executable script')
+    parser.add_argument('-ow', nargs='+', action='store', help='output files, wait for output') 
+    parser.add_argument('-o', nargs=1, action='store', help='output files, but don''t wait for output') 
+    parser.add_argument('-oc', nargs=1, action='store', help='output files to be concatenated') 
+    parser.add_argument('-och', nargs=1, action='store', help='output files to be concatenated, skip header on file 2,3,...') 
+    parser.add_argument('-pf',  action='count', help='pipe output file as input to the next script') 
+    parser.add_argument('-pi', action='count', help='pipe job-id only to the next script') 
+    parser.add_argument('args', nargs=argparse.REMAINDER)
+
+    args= parser.parse_args() 
+    print(args)
+
+        
+    #    if len(sys.argv)<4:
+    #print "Usage: %s [inputfile1] [inputfile2] [..] [-o outputfile1 [outputfile2] [..]] prog var1 [var2] [var3] .." % sys.argv[0]
+    #    sys.exit(2)
 
     # pattern: multiple datafiles + program file + multiple variations
     # the program file ends with either ".R", ".m", or ".py" (that's the way it's recognized as a program
 
-    # step 1: find the program file
-    prog_index=-1
-    for i in range(1,len(sys.argv) ) : 
-        if sys.argv[i].endswith(".py") or sys.argv[i].endswith(".R") or sys.argv[i].endswith(".m"): 
-                prog_index=i
-                program_name=sys.argv[i]
-                break
-
-    if prog_index==-1:
-        sys.exit("No program found in the argument list. Acceptable programs are: .py, .R, .m") 
-    
+    # step 1: the program file, at least one
+    if args.e==None or len(args.e)<1: 
+        print "Need at least 1 program file to execute (an R or python script). eg. '-e YOURSCRIPT.R'"
+        sys.exit(2)
+    program_name=args.e[0]
     print "program -------- %s " % (program_name)
-    add_to_tagmap("mprogram", program_name, True )  # Force put program onto redis 
+    if not os.path.exists( program_name): 
+        print "Program %s not found!" % program_name 
+        sys.exit(2)
 
+    if args.dry==None:
+        add_to_tagmap("mprogram", program_name, True )  # Force put program source onto redis 
 
-    # step 2: the data argument slice is that from 1..prog_index
+    # the input files
+    infile_ls=[] 
+    if args.ioe: 
+        infile_ls=args.ioe
+    elif args.iae: 
+        infile_ls=args.iae
+    # put them on redis (if not yet there)
+    for fn in infile_ls:
+        print "inputfile ------ %s " % (fn)
+        if args.dry==None:
+            add_to_tagmap("mdata", fn, False) # put data onto redis, but don't force it
+
+    # the output files
     wait_for_output=False # should this program wait for the output?
-    datafile_ls=sys.argv[1:prog_index]
-    infile_ls=[]
+    concat_output=False   # should the output automatically be concatenatned?
+    concat_skip_header=False   # when concatenating, skip 1 headerline for file 2,3,.. 
+    if args.ow or args.oc or args.och: 
+        wait_for_output=True # yes this program should wait for the output
     outfile_ls=[]
-    is_input=True # if false, it is an output
-    for dfn in datafile_ls: 
-        if dfn=="-wo":       # wait for the output, and show output
-            wait_for_output=True
-            continue 
-        if dfn=="-o":       # outputfile name is following, wait for it
-            is_input=False 
-            wait_for_output=True
-            continue 
-        if dfn=="-O":       # outputfile name is following, but DON'T wait for it
-            is_input=False 
-            wait_for_output=False
-            continue 
-        if is_input:
-            print "inputfile ------ %s " % (dfn)
-            add_to_tagmap("mdata", dfn, False) # Don't force-put data onto redis
-            infile_ls.append(dfn)
-        else:
-            print "outputfile ----- %s " % (dfn)
-            outfile_ls.append(dfn)
+    if args.ow:     # output files follow, wait for the output
+        outfile_ls=args.ow
+        wait_for_output=True
+    elif args.o:    # output files follow, but don't wait for output
+        outfile_ls=args.o
+    elif args.oc:   # output file(s) follow, concatenate
+        outfile_ls=args.oc
+        wait_for_output=True
+        concat_output=True
+    elif args.och:   # output file(s) follow, concatenate, skipping header on file 2,3,..
+        outfile_ls=args.och
+        wait_for_output=True
+        concat_output=True
+        concat_skip_header=True
 
-    # step 3: the variations
+    for fn in outfile_ls:
+        print "outputfile ----- %s " % (fn)
+        #if args.dry==None:
+
+    # expand the variations
     variation_ls=[] 
-    for var in sys.argv[prog_index+1:]:
-        variation_ls.extend(expand_variation(var)) # extend = append vector to vector
+    if args.e:
+        for var in args.e[1:]:
+            variation_ls.extend(expand_variation(var)) # extend = append vector to vector
 
-    if len(variation_ls)<1:
-        variation_ls.append("1") 
-
+    # the jobs
     jobs_added_ls=[]
-    for var in variation_ls:
-        print "variation ------ %s" % var
-        jobs_added_ls.append( add_job(program_name,infile_ls,outfile_ls, var) )
+    if args.ioe:    # one input file for each script, variations are ignored
+        for infile in infile_ls: 
+            print "infile    ------ %s" % infile
+            jobs_added_ls.append( add_job(program_name,[infile],outfile_ls, '') ) # infile name is going to be passed as arg
+    elif args.iae:  # all input files for each script         
+        for var in variation_ls:
+            print "variation ------ %s" % var
+            jobs_added_ls.append( add_job(program_name,infile_ls,outfile_ls, var) ) # infile name is going to be passed as arg
 
     l=len(jobs_added_ls)
     if l<25:

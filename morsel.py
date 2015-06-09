@@ -152,7 +152,9 @@ def handle_job(morsel_name,program_tag, job_id, infile_ls,outfile_ls,variation_t
         pipe = os.popen('/usr/bin/octave -q ' + program_tag + ' ' +  job_id + ' ' + variation_tag)
         output=pipe.readlines()
     elif program_tag.endswith(".R"):
-        (child_stdin, pipe) = os.popen4('/usr/bin/Rscript ' + program_tag + ' ' +  job_id + ' ' + variation_tag)
+        exeStr='/usr/bin/Rscript ' + program_tag + ' ' +  job_id + ' ' + ' '.join(infile_ls) + ' ' + variation_tag
+        print exeStr
+        (child_stdin, pipe) = os.popen4(exeStr)
         #pipe = os.popen('/usr/bin/R --slave --vanilla --quiet -f ' + program_tag + ' --args ' + variation_tag)
         output=pipe.readlines()
     return output  
