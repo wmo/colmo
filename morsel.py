@@ -78,7 +78,7 @@ def main():
             r.sadd('sprogress',progress_txt) # add it to the 'sprogress' set
 
             # 2. execute the job 
-            output=handle_job(morsel_name, program, infile_ls, outfile_ls, variation) 
+            output=handle_job(morsel_name, program, jobid, infile_ls, outfile_ls, variation) 
             r.srem('sprogress', progress_txt) # remove it from the 'progress' set
 
             # 3. put output in the moutput map
@@ -126,7 +126,7 @@ def ping(morsel_name,jobid):
 
 # NOTE: this function uses popen, a deprecated function!!
 # see https://docs.python.org/2/library/subprocess.html#subprocess-replacements
-def handle_job(morsel_name,program_tag,infile_ls,outfile_ls,variation_tag):
+def handle_job(morsel_name,program_tag, job_id, infile_ls,outfile_ls,variation_tag):
     print "%10s: -------- program    : %s" % ( morsel_name, program_tag )
     print "%10s: -------- inputfiles : %s" % ( morsel_name, ",".join(infile_ls) )
     print "%10s: -------- outputfiles: %s" % ( morsel_name, ",".join(outfile_ls) )
@@ -146,13 +146,13 @@ def handle_job(morsel_name,program_tag,infile_ls,outfile_ls,variation_tag):
     # now execute the program 
     output=''
     if program_tag.endswith(".py"):
-        pipe = os.popen('/usr/bin/python ' + program_tag + ' ' + variation_tag)
+        pipe = os.popen('/usr/bin/python ' + program_tag + ' ' + job_id + ' ' + variation_tag)
         output=pipe.readlines()
     elif program_tag.endswith(".m"):
-        pipe = os.popen('/usr/bin/octave -q ' + program_tag + ' ' + variation_tag)
+        pipe = os.popen('/usr/bin/octave -q ' + program_tag + ' ' +  job_id + ' ' + variation_tag)
         output=pipe.readlines()
     elif program_tag.endswith(".R"):
-        (child_stdin, pipe) = os.popen4('/usr/bin/Rscript ' + program_tag + ' ' + variation_tag)
+        (child_stdin, pipe) = os.popen4('/usr/bin/Rscript ' + program_tag + ' ' +  job_id + ' ' + variation_tag)
         #pipe = os.popen('/usr/bin/R --slave --vanilla --quiet -f ' + program_tag + ' --args ' + variation_tag)
         output=pipe.readlines()
     return output  

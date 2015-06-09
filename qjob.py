@@ -6,6 +6,7 @@ import time
 import sys 
 import urllib
 import os.path
+import re
 
 json_txt = urllib.urlopen("http://localhost/rome.json").read()
 conf=json.loads(json_txt) 
@@ -36,13 +37,22 @@ def main():
 
 
     # step 2: the data argument slice is that from 1..prog_index
+    wait_for_output=False # should this program wait for the output?
     datafile_ls=sys.argv[1:prog_index]
     infile_ls=[]
     outfile_ls=[]
     is_input=True # if false, it is an output
     for dfn in datafile_ls: 
-        if dfn=="-o": 
+        if dfn=="-wo":       # wait for the output, and show output
+            wait_for_output=True
+            continue 
+        if dfn=="-o":       # outputfile name is following, wait for it
             is_input=False 
+            wait_for_output=True
+            continue 
+        if dfn=="-O":       # outputfile name is following, but DON'T wait for it
+            is_input=False 
+            wait_for_output=False
             continue 
         if is_input:
             print "inputfile ------ %s " % (dfn)
@@ -57,6 +67,9 @@ def main():
     for var in sys.argv[prog_index+1:]:
         variation_ls.extend(expand_variation(var)) # extend = append vector to vector
 
+    if len(variation_ls)<1:
+        variation_ls.append("1") 
+
     jobs_added_ls=[]
     for var in variation_ls:
         print "variation ------ %s" % var
@@ -70,7 +83,7 @@ def main():
             jobs_added_ls[l-2] ,jobs_added_ls[l-1])
 
     # step 4: poll for the output, in case we have output files
-    if len(outfile_ls)>0: 
+    if len(outfile_ls)>0 and wait_for_output: 
         print "Waiting for output files: {} ".format(",".join(outfile_ls))
         job_waited_on_set=set(jobs_added_ls)
         report_set_len=True
@@ -92,6 +105,28 @@ def main():
                     job_waited_on_set.remove(jobid)
                     report_set_len=True
             sys.stdout.write(".") ; sys.stdout.flush()
+            time.sleep(1) # sleep a second
+    elif len(outfile_ls)==0 and wait_for_output:    # wait for completion and show output
+        print ""
+        job_waited_on_set=set(jobs_added_ls)
+        report_set_len=True
+        while (len(job_waited_on_set)>0):
+            for job_json in r.smembers("sdone"): 
+                jobattrib=json.loads(job_json)
+                jobid=jobattrib['id'] 
+                if jobid in job_waited_on_set:
+                    data=json.loads(r.hget("moutput",jobid))
+                    v=data["output"]
+                    o=""
+                    if isinstance(v,list):
+                        o=re.sub( '\n',' | ', ' | '.join(v) )
+                    else:
+                        o=v
+                    print "[%3d] %s: %s" % ( len(job_waited_on_set),jobid, o )
+
+                    # remove from set
+                    job_waited_on_set.remove(jobid)
+            #sys.stdout.write(".") ; sys.stdout.flush()
             time.sleep(1) # sleep a second
     print "\nDone"
 
