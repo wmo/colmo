@@ -68,6 +68,7 @@ def main():
             infile_ls=jobattrib['infile_ls']
             outfile_ls=jobattrib['outfile_ls']
             variation=jobattrib['variation']
+            convey=jobattrib['convey']
 
             #print "got {} infiles".format(len(infile_ls))
             #print "got {} outfiles".format(len(outfile_ls))
@@ -78,7 +79,7 @@ def main():
             r.sadd('sprogress',progress_txt) # add it to the 'sprogress' set
 
             # 2. execute the job 
-            output=handle_job(morsel_name, program, jobid, infile_ls, outfile_ls, variation) 
+            output=handle_job(morsel_name, program, jobid, infile_ls, outfile_ls, variation, convey) 
             r.srem('sprogress', progress_txt) # remove it from the 'progress' set
 
             # 3. put output in the moutput map
@@ -114,7 +115,6 @@ def cleanup(morsel_name,jobid):
 def putout(jobid,output): 
     r.hset("moutput",jobid,json.dumps( { 'output':output } ) )
 
-
 def ping(morsel_name,jobid):
     print "%10s: -------- ping " % morsel_name
     workdir=os.getcwd()
@@ -126,11 +126,12 @@ def ping(morsel_name,jobid):
 
 # NOTE: this function uses popen, a deprecated function!!
 # see https://docs.python.org/2/library/subprocess.html#subprocess-replacements
-def handle_job(morsel_name,program_tag, job_id, infile_ls,outfile_ls,variation_tag):
+def handle_job(morsel_name,program_tag, job_id, infile_ls,outfile_ls,variation_tag,convey):
     print "%10s: -------- program    : %s" % ( morsel_name, program_tag )
     print "%10s: -------- inputfiles : %s" % ( morsel_name, ",".join(infile_ls) )
     print "%10s: -------- outputfiles: %s" % ( morsel_name, ",".join(outfile_ls) )
     print "%10s: -------- variation  : %s" % ( morsel_name, variation_tag )
+    print "%10s: -------- convey     : %s" % ( morsel_name, convey )
     #orig if r.hexists("mprogram",program_tag) and not(os.path.isfile(program_tag)):
     if r.hexists("mprogram",program_tag): # always copy the latest program file from redis
         content=r.hget("mprogram",program_tag)
@@ -143,21 +144,28 @@ def handle_job(morsel_name,program_tag, job_id, infile_ls,outfile_ls,variation_t
     if r.hexists("mvariation",variation_tag) and not(os.path.isfile(variation_tag)):
         content=r.hget("mvariation",variation_tag)
         write_file(morsel_name,variation_tag,content) 
+    # why filenames to convey to the script
+    conveyStr=''
+    if convey=='input':
+        conveyStr=' '.join(infile_ls) 
+    elif convey=='output':
+        conveyStr=' '.join(outfile_ls) 
+    elif convey=='both':
+        conveyStr=' '.join(infile_ls) + ' ' + ' '.join(outfile_ls) 
     # now execute the program 
     output=''
     if program_tag.endswith(".py"):
-        pipe = os.popen('/usr/bin/python ' + program_tag + ' ' + job_id + ' ' + variation_tag)
+        pipe = os.popen('/usr/bin/python ' + program_tag + ' ' + job_id + ' ' + conveyStr + ' ' + variation_tag)
         output=pipe.readlines()
     elif program_tag.endswith(".m"):
-        pipe = os.popen('/usr/bin/octave -q ' + program_tag + ' ' +  job_id + ' ' + variation_tag)
+        pipe = os.popen('/usr/bin/octave -q ' + program_tag + ' ' +  job_id + ' ' + conveyStr + ' ' + variation_tag)
         output=pipe.readlines()
     elif program_tag.endswith(".R"):
-        exeStr='/usr/bin/Rscript ' + program_tag + ' ' +  job_id + ' ' + ' '.join(infile_ls) + ' ' + variation_tag
+        exeStr='/usr/bin/Rscript ' + program_tag + ' ' +  job_id + ' ' + conveyStr + ' ' + variation_tag
         print exeStr
         (child_stdin, pipe) = os.popen4(exeStr)
-        #pipe = os.popen('/usr/bin/R --slave --vanilla --quiet -f ' + program_tag + ' --args ' + variation_tag)
         output=pipe.readlines()
-    return output  
+    return output
 
 
 def write_file(morsel_name,filename,content):

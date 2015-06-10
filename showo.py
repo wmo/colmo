@@ -24,7 +24,7 @@ def main():
         v=data["output"]
         o=""
         if isinstance(v,list):
-            o=re.sub( '\n',' | ', ' | '.join(v) ) 
+            o=re.sub('\| +\|','||',   re.sub( '\n',' | ', ' | '.join(v))  )
         else:
             o=v
         t=0

@@ -17,21 +17,28 @@ def main():
     # cmd line args
     parser = argparse.ArgumentParser(description='Put jobs on the Colmo queue.')
 
-    parser.add_argument('-dry', action='count', help='dry run, just show what would be done, don''t execute')
+    parser.add_argument('-ci', action='count', help='convey input file names as parameters to the script') 
+    parser.add_argument('-co', action='count', help='convey output file names as parameters to the script') 
+    parser.add_argument('-ca', action='count', help='convey both input and output file names as parameters to the script') 
+    parser.add_argument('-cn', action='count', help='convey no files names as parameters to the script') 
+    parser.add_argument('-dry', action='count', help='dry run, just show what would be done, don''t execute') #NOT OK YET
     parser.add_argument('-ioe', nargs='+', action='store', help='input files, one for each script') 
     parser.add_argument('-iae', nargs='+', action='store', help='input files, all for each script') 
-    parser.add_argument('-e', nargs='+', action='store', help='executable script')
-    parser.add_argument('-e2', nargs='+', action='store', help='2nd executable script')
+    parser.add_argument('-x', nargs='+', action='store', help='executable script')
+    parser.add_argument('-x2', nargs='+', action='store', help='2nd executable script')
     parser.add_argument('-ow', nargs='+', action='store', help='output files, wait for output') 
-    parser.add_argument('-o', nargs=1, action='store', help='output files, but don''t wait for output') 
-    parser.add_argument('-oc', nargs=1, action='store', help='output files to be concatenated') 
-    parser.add_argument('-och', nargs=1, action='store', help='output files to be concatenated, skip header on file 2,3,...') 
+    parser.add_argument('-o', nargs=1, action='store', help='output files, but don''t wait for completion') 
+    parser.add_argument('-oc', nargs=1, action='store', help='wait for completion, output files to be concatenated') 
+    parser.add_argument('-och', nargs=1, action='store', help='wait for completion, output files to be concatenated, skip header on file 2,3,...') 
     parser.add_argument('-pf',  action='count', help='pipe output file as input to the next script') 
     parser.add_argument('-pi', action='count', help='pipe job-id only to the next script') 
+    parser.add_argument('-w', action='count', help='wait for completion, and show stdout') 
+    parser.add_argument('-q', action='count', help='quiet, be as quiet as possible') 
+    parser.add_argument('-v', action='count', help='be verbose, tell me more than normal') 
     parser.add_argument('args', nargs=argparse.REMAINDER)
 
     args= parser.parse_args() 
-    print(args)
+    if args.v: print(args)
 
         
     #    if len(sys.argv)<4:
@@ -41,37 +48,43 @@ def main():
     # pattern: multiple datafiles + program file + multiple variations
     # the program file ends with either ".R", ".m", or ".py" (that's the way it's recognized as a program
 
+    # step 0: what do we convey as parameters to the script ? 
+    # the job-id will ALWAYS be the first parameter passed to the script (you can't change that)
+    convey_input_filenames=False
+    convey_output_filenames=False
+
     # step 1: the program file, at least one
-    if args.e==None or len(args.e)<1: 
+    if args.x==None or len(args.x)<1: 
         print "Need at least 1 program file to execute (an R or python script). eg. '-e YOURSCRIPT.R'"
         sys.exit(2)
-    program_name=args.e[0]
-    print "program -------- %s " % (program_name)
+    program_name=args.x[0]
+    if not args.q: print "program -------- %s " % (program_name)
     if not os.path.exists( program_name): 
         print "Program %s not found!" % program_name 
         sys.exit(2)
 
     if args.dry==None:
-        add_to_tagmap("mprogram", program_name, True )  # Force put program source onto redis 
+        add_to_tagmap("mprogram", program_name, True, args.q)  # Force put program source onto redis 
 
     # the input files
     infile_ls=[] 
     if args.ioe: 
         infile_ls=args.ioe
+        # input filenames to be passed to the script as args, unless explicitly indicated
+        if not args.cn:
+            convey_input_filenames=True
     elif args.iae: 
         infile_ls=args.iae
     # put them on redis (if not yet there)
     for fn in infile_ls:
-        print "inputfile ------ %s " % (fn)
+        if not args.q: print "inputfile ------ %s " % (fn)
         if args.dry==None:
-            add_to_tagmap("mdata", fn, False) # put data onto redis, but don't force it
+            add_to_tagmap("mdata", fn, False, args.q) # put data onto redis, but don't force it
 
     # the output files
     wait_for_output=False # should this program wait for the output?
     concat_output=False   # should the output automatically be concatenatned?
     concat_skip_header=False   # when concatenating, skip 1 headerline for file 2,3,.. 
-    if args.ow or args.oc or args.och: 
-        wait_for_output=True # yes this program should wait for the output
     outfile_ls=[]
     if args.ow:     # output files follow, wait for the output
         outfile_ls=args.ow
@@ -87,40 +100,65 @@ def main():
         wait_for_output=True
         concat_output=True
         concat_skip_header=True
+    elif args.w:   # not output file(s) follow, but wait for completion and show output 
+        wait_for_output=True
 
-    for fn in outfile_ls:
-        print "outputfile ----- %s " % (fn)
-        #if args.dry==None:
+    if not args.q: 
+        for fn in outfile_ls:
+            print "outputfile ----- %s " % (fn)
 
     # expand the variations
     variation_ls=[] 
-    if args.e:
-        for var in args.e[1:]:
+    if args.x:
+        for var in args.x[1:]:
             variation_ls.extend(expand_variation(var)) # extend = append vector to vector
 
+    # what to convey to the script
+    convey="none"
+    if convey_input_filenames and convey_output_filenames:
+        convey="both"
+    elif convey_input_filenames:
+        convey="input"
+    elif convey_output_filenames:
+        convey="output"
+    
     # the jobs
     jobs_added_ls=[]
     if args.ioe:    # one input file for each script, variations are ignored
         for infile in infile_ls: 
-            print "infile    ------ %s" % infile
-            jobs_added_ls.append( add_job(program_name,[infile],outfile_ls, '') ) # infile name is going to be passed as arg
+            if not args.q: print "infile    ------ %s" % infile
+            jobs_added_ls.append( add_job(program_name,[infile],outfile_ls, '', convey) ) # infile name is going to be passed as arg
     elif args.iae:  # all input files for each script         
         for var in variation_ls:
-            print "variation ------ %s" % var
-            jobs_added_ls.append( add_job(program_name,infile_ls,outfile_ls, var) ) # infile name is going to be passed as arg
+            if not args.q: print "variation ------ %s" % var
+            jobs_added_ls.append( add_job(program_name,infile_ls,outfile_ls, var, convey) ) # infile name is going to be passed as arg
+    else:           # no input files
+        for var in variation_ls:
+            if not args.q: print "variation ------ %s" % var
+            jobs_added_ls.append( add_job(program_name,infile_ls,outfile_ls, var, convey) ) # infile name is going to be passed as arg
+
 
     l=len(jobs_added_ls)
     if l<25:
-        print "Added jobs: {}".format(jobs_added_ls)
+        if not args.q: print "Added jobs: {}".format(jobs_added_ls)
     else:
-        print "Added jobs: {} {} .. {} {} ".format(jobs_added_ls[0],jobs_added_ls[1],
+        if not args.q: print "Added jobs: {} {} .. {} {} ".format(jobs_added_ls[0],jobs_added_ls[1],
             jobs_added_ls[l-2] ,jobs_added_ls[l-1])
 
+    concat_output_files=False
+    if args.oc: concat_output_files=True
+
+    concat_output_files_skip_header=False
+    if args.och: concat_output_files_skip_header=True
+
+
+    # BUG IN THE FOLLOWING: multiple output files are allowed, but not handled!!!
     # step 4: poll for the output, in case we have output files
     if len(outfile_ls)>0 and wait_for_output: 
-        print "Waiting for output files: {} ".format(",".join(outfile_ls))
+        if not args.q: print "Waiting for output files: {} ".format(",".join(outfile_ls))
         job_waited_on_set=set(jobs_added_ls)
         report_set_len=True
+        collected_file_ls=[]
         while (len(job_waited_on_set)>0):
             if report_set_len:
                 sys.stdout.write( "\n["+str(len(job_waited_on_set))+"]" )
@@ -135,13 +173,32 @@ def main():
                         fn="{}-{}".format( jobid, ofn) 
                         content=r.hget("mdata",fn)
                         write_file(fn,content)
+                        collected_file_ls.append(fn)
                     # remove from set
                     job_waited_on_set.remove(jobid)
                     report_set_len=True
             sys.stdout.write(".") ; sys.stdout.flush()
             time.sleep(1) # sleep a second
+        if concat_output_files or concat_output_files_skip_header: 
+            output_lines=[]
+            first=True
+            for fn in sorted(collected_file_ls): 
+                infile = file(fn,'r')
+                lines_ls=infile.readlines()
+                if not concat_output_files_skip_header: 
+                    output_lines.extend(lines_ls) 
+                elif first: 
+                    output_lines.extend(lines_ls) 
+                    first=False
+                else:
+                    output_lines.extend(lines_ls[1:]) 
+                infile.close()
+            outfile=file(outfile_ls[0],'w') 
+            outfile.writelines(output_lines) 
+            outfile.close()
+                
+
     elif len(outfile_ls)==0 and wait_for_output:    # wait for completion and show output
-        print ""
         job_waited_on_set=set(jobs_added_ls)
         report_set_len=True
         while (len(job_waited_on_set)>0):
@@ -153,36 +210,37 @@ def main():
                     v=data["output"]
                     o=""
                     if isinstance(v,list):
-                        o=re.sub( '\n',' | ', ' | '.join(v) )
+                        o=re.sub( '\| $','', re.sub('\| +\|','||',   re.sub( '\n',' | ', ' | '.join(v)) ))
                     else:
                         o=v
-                    print "[%3d] %s: %s" % ( len(job_waited_on_set),jobid, o )
+                    print "%3d,%s: %s" % ( len(job_waited_on_set),jobid, o )
 
                     # remove from set
                     job_waited_on_set.remove(jobid)
             #sys.stdout.write(".") ; sys.stdout.flush()
             time.sleep(1) # sleep a second
-    print "\nDone"
+    if not args.q: print "\nDone"
 
 
 
-def add_job(program_name, infile_ls, outfile_ls, variation_name): 
+def add_job(program_name, infile_ls, outfile_ls, variation_name, convey): 
         # get a job_id
         sq=r.incr("seq_job")
         tm=r.time()  # unix timestamp + microseconds
         jobid="j{}".format(sq)
         # push on the qjob queue
         r.lpush( "qjob", '{' + str.format( 
-            r'"id":"{0}","program":"{1}", "infile_ls":{2}, "outfile_ls":{3}, "variation":"{4}", "queue_time":"{5}.{6}"', 
-
-            jobid, program_name, json.dumps(infile_ls), json.dumps(outfile_ls), variation_name, tm[0],tm[1] ) +'}' )
+            r'''"id":"{0}","program":"{1}", "infile_ls":{2}, "outfile_ls":{3}, "variation":"{4}",
+                "queue_time":"{5}.{6}", "convey":"{7}"''', 
+            jobid, program_name, json.dumps(infile_ls), json.dumps(outfile_ls), variation_name, 
+            tm[0],tm[1], convey ) + '}'  )
         return jobid
 
 
-def add_to_tagmap(map_name,field,force):
+def add_to_tagmap(map_name,field,force,bequiet):
     # first check if the tag already exists, unless we are forced to put it onto redis
     if (not force) and (r.hexists(map_name,field)):
-        print "  map '%s' already contains '%s' " % ( map_name, field ) 
+        if not bequiet: print "  map '%s' already contains '%s' " % ( map_name, field ) 
         return
 
     # if it is a file, put it on the queue
