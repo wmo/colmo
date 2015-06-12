@@ -30,8 +30,8 @@ def main():
     parser.add_argument('-o', nargs=1, action='store', help='output files, but don''t wait for completion') 
     parser.add_argument('-oc', nargs=1, action='store', help='wait for completion, output files to be concatenated') 
     parser.add_argument('-och', nargs=1, action='store', help='wait for completion, output files to be concatenated, skip header on file 2,3,...') 
-    parser.add_argument('-pf',  action='count', help='pipe output file as input to the next script') 
-    parser.add_argument('-pi', action='count', help='pipe job-id only to the next script') 
+    #parser.add_argument('-pf',  action='count', help='pipe output file as input to the next script') 
+    #DEFAULT: parser.add_argument('-pi', action='count', help='pipe job-id only to the next script') 
     parser.add_argument('-w', action='count', help='wait for completion, and show stdout') 
     parser.add_argument('-q', action='count', help='quiet, be as quiet as possible') 
     parser.add_argument('-v', action='count', help='be verbose, tell me more than normal') 
@@ -65,6 +65,15 @@ def main():
 
     if args.dry==None:
         add_to_tagmap("mprogram", program_name, True, args.q)  # Force put program source onto redis 
+
+    program2_name=''
+    if args.x2:
+        program2_name=args.x2[0]
+        if not os.path.exists( program2_name): 
+            print "Program2 %s not found!" % program2_name 
+            sys.exit(2)
+        if args.dry==None: 
+            add_to_tagmap("mprogram", program2_name, True, args.q)  # Force put program source onto redis 
 
     # the input files
     infile_ls=[] 
@@ -152,7 +161,7 @@ def main():
     if args.och: concat_output_files_skip_header=True
 
 
-    # BUG IN THE FOLLOWING: multiple output files are allowed, but not handled!!!
+    # BUG IN THE FOLLOWING: multiple output files are allowed, but not all handled!!! (only 1 is)
     # step 4: poll for the output, in case we have output files
     if len(outfile_ls)>0 and wait_for_output: 
         if not args.q: print "Waiting for output files: {} ".format(",".join(outfile_ls))
@@ -197,7 +206,6 @@ def main():
             outfile.writelines(output_lines) 
             outfile.close()
                 
-
     elif len(outfile_ls)==0 and wait_for_output:    # wait for completion and show output
         job_waited_on_set=set(jobs_added_ls)
         report_set_len=True
@@ -219,6 +227,40 @@ def main():
                     job_waited_on_set.remove(jobid)
             #sys.stdout.write(".") ; sys.stdout.flush()
             time.sleep(1) # sleep a second
+
+    elif args.x2 :    # wait for completion of x, then kick off job x2
+        job_waited_on_set=set(jobs_added_ls)
+        report_set_len=True
+        # wait for x to complete
+        while (len(job_waited_on_set)>0):
+            for job_json in r.smembers("sdone"): 
+                jobattrib=json.loads(job_json)
+                jobid=jobattrib['id'] 
+                if jobid in job_waited_on_set:
+                    print "%3d,%s" % ( len(job_waited_on_set), jobid )
+                    job_waited_on_set.remove(jobid)
+            #sys.stdout.write(".") ; sys.stdout.flush()
+            time.sleep(1) # sleep a second
+        # next stage: kick off x2, passing the jobid's of the completed jobs
+        if not args.q: print "program2 ------- %s " % (program2_name)
+        x2_job_added= add_job(program2_name,jobs_added_ls,outfile_ls, '', 'input') # infile names = job id's of completed jobs
+        job_waited_on_set=set([x2_job_added])
+        while (len(job_waited_on_set)>0):
+            for job_json in r.smembers("sdone"): 
+                jobattrib=json.loads(job_json)
+                jobid=jobattrib['id'] 
+                if jobid in job_waited_on_set:
+                    print "%3d,%s" % ( len(job_waited_on_set),jobid )
+                    job_waited_on_set.remove(jobid)
+            #sys.stdout.write(".") ; sys.stdout.flush()
+            time.sleep(1) # sleep a second
+        # job is done, get the output file
+        fn="{}-{}".format(x2_job_added, outfile_ls[0]) 
+        content=r.hget("mdata",fn)
+        write_file(outfile_ls[0],content)
+         
+
+    # THE END  
     if not args.q: print "\nDone"
 
 

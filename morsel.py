@@ -33,10 +33,15 @@ def main():
         now = datetime.datetime.now()
         json_txt=r.rpop('qjob')
         if (json_txt is None):
-            print "%10s: %02d:%02d:%02d nothing in queue, sleeping %ds" % (
-                   morsel_name, now.hour, now.minute,now.second,sleeptime)
-            time.sleep(sleeptime)
-            sleeptime= min( sleeptime*2, 16) # maximum sleeptime = 16 seconds
+            if check_flags_for_short_sleep():
+                print "%10s: %02d:%02d:%02d nothing in queue, sleeping %ds" % (
+                       morsel_name, now.hour, now.minute,now.second,1)
+                time.sleep(1)
+            else:
+                print "%10s: %02d:%02d:%02d nothing in queue, sleeping %ds" % (
+                       morsel_name, now.hour, now.minute,now.second,sleeptime)
+                time.sleep(sleeptime)
+                sleeptime= min( sleeptime*2, 16) # maximum sleeptime = 16 seconds
         else:
             jobattrib=json.loads(json_txt) 
             jobid=jobattrib['id']   # eg. job147:3 -> major id=job147, minor=3
@@ -197,6 +202,13 @@ def check_flags_for_exit(morsel_name):
                 now = datetime.datetime.now()
                 print "%10s: %02d:%02d:%02d exiting because of flag %s" % ( morsel_name, now.hour, now.minute,now.second,v)
                 sys.exit(0)
+
+def check_flags_for_short_sleep():
+    for v in r.smembers("sflag"):
+        flagattrib=json.loads(v)
+        if flagattrib["command"]=="short_sleep":
+            return True
+    return False
 
 if __name__ == "__main__": main()
 
